@@ -1,0 +1,13 @@
+admin
+password
+images
+img
+download
+dev
+test
+/wp-content
+/wp-content/plugins/
+pw
+pass
+pws
+robots
