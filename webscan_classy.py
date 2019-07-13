@@ -14,6 +14,7 @@ ToDo:
 Change Log:
     7/10/2019 - Added change log.
     7/10/2019 - Started class-based program.
+    7/13/2019 - Added to github. https://github.com/NotoriousBlake/Domain-Scanner.git
 '''
 
 import sys #System - Used for command line arguments.
@@ -48,6 +49,7 @@ class server():
         self.url = url
         self.file_extensions = ['php','html','txt','css','asp','htm']
         self.throttle_multiplier = 10 #Time to get a file multiplied by this
+        self.busy_animation = ['/','-','\\','|']
 
         try:
             self.url_good = self.good_url(self.url) #Get a good URL
@@ -101,7 +103,8 @@ class server():
         try_count = 0
         for word in list_of_words:
             try:
-                print("Throttle Timer: {}".format(self.throttle_timer), end="\r")
+                #print("Throttle Timer: {}".format(self.throttle_timer), end="\r")
+                print("Working... {}".format(self.busy_animation[try_count % 4]), end="\r")
                 time.sleep(self.throttle_timer)
                 scan_url_dir = self.url_good + word.strip().strip("/")
                 scan_req_dir = requests.get(scan_url_dir)
@@ -118,7 +121,7 @@ class server():
                     scan_timer2.stop()
                     if scan_timer2.length() > 0:
                         self.throttle_timer = self.throttle_multiplier * scan_timer2.length() #Throttling 2.0
-                        print("Throttle Timer: {}".format(self.throttle_timer), end="\r")
+                        print("Working... {}".format(self.busy_animation[try_count % 4]), end="\r")
                     try_count += 1 #counting unique urls that are getting scanned
                     #print("URLs Tested: {}".format(try_count), end="\r")
                     if scan_req.status_code < 400 or scan_req.status_code > 499:
