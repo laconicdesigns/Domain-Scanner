@@ -7,18 +7,23 @@ each line in a designated dictionary file. Keep each word on a separate line.
 Outputs everything in console to a file for ease of use.
 
     TODO:
+        Add comments everywhere.
     
 Change Log:
     7/10/2019 - Added change log.
     7/10/2019 - Started class-based program.
     7/13/2019 - Added to github. https://github.com/NotoriousBlake/Domain-Scanner.git
+    7/18/2019 - Added version number. Starting today @ 0.0.1
+                Created a scan_url() function to kill some repetetive text
 '''
 
-import sys #System - Used for command line arguments.
+import sys, os, re, time #System - Used for command line arguments.
 import requests #Initially for url status codes. Going to pull robots.txt too.
 from datetime import datetime #Used for getting time for unique file names.
-import time #throttling using sleep()
-import os
+from lxml import etree
+
+ws_version = "0.0.1"
+debug = False
 
 class output():
     def __init__(self, output_string):
@@ -52,7 +57,7 @@ class server():
             self.url_good = self.good_url(self.url) #Get a good URL
             start_throttle_timer = scan_timer()     #Starting throttle timer
             start_throttle_timer.start()
-            request = requests.get(self.url_good)   #Get good URL obj
+            request = requests.get(self.url_good, allow_redirects=False)   #Get good URL obj
             start_throttle_timer.stop()
             if start_throttle_timer.length() > 0:
                 self.throttle_timer = self.throttle_multiplier * start_throttle_timer.length()
@@ -82,8 +87,30 @@ class server():
         if good_url[-1] != "/":
             good_url = good_url + "/"
             #This shouldn't affect anything, and also makes the word_list section cleaner
-
         return good_url
+
+    def scan_url(self, url):
+    #url is a clean url
+        if debug == True:
+            print("\nScanning URL: {}".format(url))
+        scan_req = requests.get(url, allow_redirects=False)
+        scan_req_list_lines = scan_req.text.splitlines(True)
+        scan_req_sc = scan_req.status_code
+        if debug == True:
+            print("SEARCHING URL: {}".format(url))
+        if scan_req_sc == 200:
+            print(self.scan_html(scan_req.text))
+        return scan_req_sc, scan_req_list_lines
+        
+    def scan_html(self,html):
+        #html is a string
+        root = etree.XML(html)
+        #parser = etree.HTMLParser()
+        #tree = etree.parse(html, parser)
+        if len(root) > 0:
+            print(root.find('a'))
+        #return re.search('(?:(?:https?|ftp):\/\/|\b(?:[a-z\d]+\.))(?:(?:[^\s()<>]+|\((?:[^\s()<>]+|(?:\([^\s()<>]+\)))?\))+(?:\((?:[^\s()<>]+|(?:\(?:[^\s()<>]+\)))?\)|[^\s`!()\[\]{};:\'".,<>?«»“”‘’]))?',scan_req.text)
+        #return regex(html,"whatever")
 
     def scan_website(self, wordlist):
         try:
@@ -100,66 +127,90 @@ class server():
         try_count = 0
         for word in list_of_words:
             try:
-                print("Working... {}".format(self.busy_animation[try_count % 4]), end="\r")
+                #print("Working... {}".format(self.busy_animation[try_count % 4]), end="\r")
                 time.sleep(self.throttle_timer)
                 clean_directory = word.strip().strip("/")
                 scan_url_dir = self.url_good + clean_directory
-                scan_req_dir = requests.get(scan_url_dir)
+                #scan_req_dir = requests.get(scan_url_dir, allow_redirects=False)
+                #scan_sc = scan_req_dir.status_code
+                scan_sc, scan_req_text_lines = self.scan_url(scan_url_dir)
                 try_count += 1
-                if scan_req_dir.status_code < 400 or scan_req_dir.status_code > 499:
-                    print(scan_url_dir,"->", scan_req_dir.status_code)
+                print("URLs Tested: {}".format(try_count), end="\r")
+                if scan_sc == 200:
+                    print(scan_url_dir,"->", scan_sc)
                     #Here's an available directory.
                     directory_structure.append(clean_directory)
                     print("Current Dir Structure -> {}".format(directory_structure))
-
+                else:
+                    if debug == True:
+                        print("URL: {}  Status Code: {}".format(scan_url_dir,scan_sc))
                 for ext in self.file_extensions: #dynamic URLs
                     time.sleep(self.throttle_timer)
-                    scan_url = self.url_good + word.strip() + "." + ext
+                    ext_url = self.url_good + word.strip() + "." + ext
                     scan_timer2 = scan_timer() #Throttle timer stuff
                     scan_timer2.start()
-                    scan_req = requests.get(scan_url)
+                    #scan_req = requests.get(scan_url, allow_redirects=False)
+                    scan_sc, scan_req_text_lines = self.scan_url(ext_url)
                     scan_timer2.stop()
                     if scan_timer2.length() > 0:
                         self.throttle_timer = self.throttle_multiplier * scan_timer2.length() #Throttling 2.0
-                        print("Working... {}".format(self.busy_animation[try_count % 4]), end="\r")
+                        #print("Working... {}".format(self.busy_animation[try_count % 4]), end="\r")
                     try_count += 1 #counting unique urls that are getting scanned
-                    #print("URLs Tested: {}".format(try_count), end="\r")
-                    if scan_req.status_code < 400 or scan_req.status_code > 499:
-                        print(scan_url,"->", scan_req.status_code)
+                    print("URLs Tested: {}".format(try_count), end="\r")
+                    if scan_sc == 200:
+                        print(ext_url,"->", scan_sc)
+                    else:
+                        if debug == True:
+                            print("URL: {}  Status Code: {}".format(ext_url,scan_sc))
             except Exception as e:
-                print("Error Scanning Website ->", e)
+                if debug == True:
+                    print("Error Scanning Website ->", e)
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
                 print(exc_type, fname, exc_tb.tb_lineno)
 
         #After that works
         #get all the info from robots.txt and scan those directories
+        robot_domains = []
+        robot_disallow = []
         try:
             robot_url = self.url_good + "robots.txt"
-            print("\nChecking for",robot_url)
+            robots_sc, robots_list = self.scan_url(robot_url)
 
-            robot_req = requests.get(robot_url)
-            robots_list = robot_req.text.splitlines(True)
-            robots_sc = robot_req.status_code
-            robot_domains = []
-            if robots_sc == 404:
-                print(robot_url,"does not exist.")
-            elif robots_sc == 200:
+            if robots_sc != 200:
+                print("robots.txt error. Status Code: {}".format(robots_sc))
+            else:
+                print("robots.txt found.\nProcessing...")
                 #print("robots.txt contents: {}".format(robots_list))  #prints out the contents of the robots.txt file
                 for line in robots_list:
-                    print(line[0])
-                    if line[0] == "Sitemap:":
+                    try:
+                        list_words = line.split(" ")
+                        if len(list_words) > 1:
+                            robot_property = list_words[0].strip(":")
+                            robot_value = list_words[1].strip("\n")
+                    except Exception as e:
+                        print("Error getting robots.txt -> {} {}".format(e, list_words))
+                        exc_type, exc_obj, exc_tb = sys.exc_info()
+                        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+                        print(exc_type, fname, exc_tb.tb_lineno)
+                        break
+                    #print(line)
+                    if robot_property == "Sitemap":
                         #woodoggy. Let's go parse that. But we should probably
                         #compare it to our own directory structure first, and
                         #note the differences.
-                        sitemap_location = line[1]
+                        sitemap_location = robot_value
                         print("Found a sitemap: {}".format(sitemap_location))
-                    elif line[0][0] == "/":
-                        if line[1] not in robot_domains:
-                            robot_domains.append(line[1])
-                print("Unique Domains:", robot_domains)
-
-
+                    elif robot_property == "Disallow":
+                        #print("Skipping Directory Addition -> {}".format(robot_value))
+                        robot_disallow.append(robot_value)
+                        continue
+                    elif len(robot_value) > 1:
+                            if robot_value[0] == "/":
+                                if robot_value not in robot_domains:
+                                    robot_domains.append(robot_value)
+                print("Unique Domains: {}".format(robot_domains))
+                print("Disallowed Domains: {}".format(robot_disallow))
         except Exception as e:
             print("Error getting robots.txt->",e)
             exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -169,20 +220,22 @@ class server():
         print("Tested",try_count,"urls.")
         #determine directory structure for the website, and recurse through
         #directories applying wordlist each time.
+        #func scan_html(string html) that returns a list of urls found from
+        #a regex 
+        if len(robot_domains) < 1:
+            print("No working domains found.")
+            #move on
+        else:
+            print("Found some domains.")
+            for domain in robot_domains:
+                print("{}\n".format(domain))
+        #check each of the found domains.
 
         #Alert user to robots.txt directories, and ask to insert unique values
         #into words.txt for usage on future projects.
 
-        #Also make the wordlist dynamic by adding appropriate file extensions
-        #to add to the words. ie. .php .txt .html .wtf .js .css
-
         #Change the wordlist dynamically too, so it replaces characters with
         #similar characters, such as p4ssw0rd or p455w0rd, etc.
-
-        #Put together a system that throttles the scanning speed, so as to not
-        #DOS the server you're scanning, and maybe to stay under the radar too.
-        #I imagine this could all get very resource intense, depending on the
-        #recursion
 
 class word_list():
     def __init__(self,location):
@@ -220,7 +273,7 @@ class scan_timer():
             len = self.stop_time - self.start_time
         return len
 
-print("Domain Scanner, written by Blake Bartlett.\n")
+print("Domain Scanner, written by Blake Bartlett.\nVersion: {}\n".format(ws_version))
 temp_website = input("What URL would you like to scan? ->")
 temp_wordlist = input("And where is your wordlist located at? Local File Directory: ")
 
