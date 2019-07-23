@@ -8,6 +8,7 @@ Outputs everything in console to a file for ease of use.
 
     TODO:
         Add comments everywhere.
+        Finish output function!
 
 Change Log:
     7/10/2019 - Added change log.
@@ -26,31 +27,42 @@ from datetime import datetime  # Used for getting time for unique file names.
 import requests  # Initially for url status codes. Going to pull robots.txt too.
 from lxml import html as lhtml
 
-ws_version = "0.0.2"
+ws_version = "0.0.3"
 debug = False
 
 
 class Output:
-    def __init__(self, output_string):
-        current_time = datetime.now().strftime('%m-%d-%Y.%H-%M-%S')
-        self.file_name = current_time + ".txt"
-        if output_string is not None:
-            self.output_string = output_string
-        else:
-            self.output_string = "\n"
+    #my output = Output
+    #my_output.out(string,booldebug)
+    def __init__(self, domain):
+        try:
+            current_time = datetime.now().strftime('%m-%d-%Y.%H-%M-%S')
+            self.domain = domain
+            self.file_name = self.domain + current_time + ".txt"
+            self.log_file = self.file_open(self.file_name)
+        except Exception as initExc:
+            print("Error creating Output class: {}".format(initExc))
 
-    def file_write(self, output_file_name):
-        pass
+    def file_write(self, output_string):
+        try:
+            self.log_file.writelines(str(output_string))
+        except Exception as fwExc:
+            print("Log file write error: {}".format(fwExc))
 
     def file_open(self, output_file_name):
-        pass
+        try:
+            file = open(output_file_name, "x")
+            return file
+        except Exception as logExc:
+            print("File open error: {}".format(logExc))
 
-    def file_close(self, output_file_name):
-        pass
+    def file_close(self):
+        self.log_file.close()
 
-    @staticmethod
-    def do(self):
-        print(self.output_string)
+    def do(self, output_string):
+        print(output_string)
+        self.file_write(output_string)
+
 
 class Server:
     def __init__(self, url, wordlist):
@@ -60,7 +72,9 @@ class Server:
         self.busy_animation = ['/', '-', '\\', '|']
         self.wordlist_len = len(wordlist)
 
-        print("Words in Wordlist: {}".format(self.wordlist_len))
+        self.soutput = Output(self.url)
+
+        self.soutput.do("Words in Wordlist: {}".format(self.wordlist_len))
         try:
             if self.wordlist_len > 0:
                 self.url_good = self.good_url(self.url)  # Get a good URL
@@ -74,24 +88,24 @@ class Server:
             else:
                 raise ValueError("Wordlist is empty")
         except Exception as exx:
-            print("Couldn't get website information. Error Info:" + exx)
+            self.soutput.do("Couldn't get website information. Error Info:" + exx)
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            print(exc_type, fname, exc_tb.tb_lineno)
+            self.soutput.do(exc_type, fname, exc_tb.tb_lineno)
 
     def good_url(self, url):
         good_url: str = ""
         url_first_four = url[0:4]
         if url_first_four != "http":
             if url_first_four != "www.":
-                good_url = "http://www." + url
+                good_url = "https://www." + url
             else:
-                good_url = "http://" + url
+                good_url = "https://" + url
             # This is a good start.
             if url_first_four != "www.":
-                good_url = "http://www." + url
+                good_url = "https://www." + url
             else:
-                good_url = "http://" + url
+                good_url = "https://" + url
         else:
             good_url = url
             # Just return the url
@@ -104,14 +118,12 @@ class Server:
     def scan_url(self, url):
         # url is a clean url
         if debug:
-            print("\nScanning URL: {}".format(url))
+            self.soutput.do("\nScanning URL: {}".format(url), True)
         scan_req = requests.get(url, allow_redirects=False)
         scan_req_sc = scan_req.status_code
-        if debug:
-            print("SEARCHING URL: {}".format(url))
         if scan_req_sc == 200:
             if len(scan_req.text) > 0:
-                print(self.scan_html(scan_req.text))
+                self.soutput.do(self.scan_html(scan_req.text))
                 scan_req_list_lines = scan_req.text.splitlines(True)
             else:
                 error_text = url + " was blank."
@@ -125,15 +137,16 @@ class Server:
         if len(html) > 0:
             root = lhtml.fromstring(html)
             anchor_tags = root.xpath("//a/@href")
-            print("{} anchor tags at {}:".format(len(anchor_tags), self.url_good))
-            print(anchor_tags)
+            self.soutput.do("{} anchor tags at {}:".format(len(anchor_tags), self.url_good))
+            self.soutput.do(anchor_tags)
+            for link in anchor_tags:
+                self.soutput.do(self.full_url(link))
 
     def scan_website(self, wordlist):
-
         directory_structure = []  # Storing found directories.
 
-        print("\nWorking domains printed below for", self.url_good)
-        print("-=-=-=-=-=-=-=-=-=-=")
+        self.soutput.do("\nWorking domains printed below for {}".format(self.url_good))
+        self.soutput.do("-=-=-=-=-=-=-=-=-=-=")
         try_count = 0
         for word in wordlist:
             try:
@@ -146,13 +159,13 @@ class Server:
                 try_count += 1
                 print("URLs Tested: {}".format(try_count), end="\r")
                 if scan_sc == 200:
-                    print(scan_url_dir, "->", scan_sc)
+                    self.soutput.do(scan_url_dir, "->", scan_sc)
                     # Here's an available directory.
                     directory_structure.append(clean_directory)
-                    print("Current Dir Structure -> {}".format(directory_structure))
+                    self.soutput.do("Current Dir Structure -> {}".format(directory_structure))
                 else:
                     if debug:
-                        print("URL: {}  Status Code: {}".format(scan_url_dir, scan_sc))
+                        self.soutput.do("URL: {}  Status Code: {}".format(scan_url_dir, scan_sc), True)
                 for ext in self.file_extensions:  # dynamic URLs
                     time.sleep(self.throttle_timer)
                     ext_url = self.url_good + word.strip() + "." + ext
@@ -166,16 +179,16 @@ class Server:
                         print("URLs tested: {}".format(try_count), end="\r")
                     try_count += 1  # counting unique urls that are getting scanned
                     if scan_sc == 200:
-                        print(ext_url, "->", scan_sc)
+                        self.soutput.do(ext_url, "->", scan_sc)
                     else:
                         if debug:
-                            print("URL: {}  Status Code: {}".format(ext_url, scan_sc))
+                            self.soutput.do("URL: {}  Status Code: {}".format(ext_url, scan_sc),True)
             except Exception as exce:
                 if debug:
-                    print("Error Scanning Website ->", exce)
+                    self.soutput.do("Error Scanning Website: {}".format(exce))
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-                print(exc_type, fname, exc_tb.tb_lineno)
+                self.soutput.do(exc_type, fname, exc_tb.tb_lineno)
 
         # After that works
         # get all the info from robots.txt and scan those directories
@@ -188,9 +201,9 @@ class Server:
             robots_sc, robots_list = self.scan_url(robot_url)
 
             if robots_sc != 200:
-                print("robots.txt error. Status Code: {}".format(robots_sc))
+                self.soutput.do("robots.txt error. Status Code: {}".format(robots_sc))
             else:
-                print("robots.txt found.\nProcessing...")
+                self.soutput.do("robots.txt found.\nProcessing...")
                 for line in robots_list:
                     try:
                         list_words = line.split(" ")
@@ -198,10 +211,10 @@ class Server:
                             robot_property = list_words[0].strip(":")
                             robot_value = list_words[1].strip("\n")
                     except Exception as excep:
-                        print("Error getting robots.txt -> {} {}".format(excep, list_words))
+                        self.soutput.do("Error getting robots.txt -> {} {}".format(excep, list_words))
                         exc_type, exc_obj, exc_tb = sys.exc_info()
                         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-                        print(exc_type, fname, exc_tb.tb_lineno)
+                        self.soutput.do(exc_type, fname, exc_tb.tb_lineno)
                         break
                     # print(line)
                     if robot_property == "Sitemap":
@@ -209,7 +222,7 @@ class Server:
                         # compare it to our own directory structure first, and
                         # note the differences.
                         sitemap_location = robot_value
-                        print("Found a sitemap: {}".format(sitemap_location))
+                        self.soutput.do("Found a sitemap: {}".format(sitemap_location))
                     elif robot_property == "Disallow":
                         robot_disallow.append(robot_value)
                         continue
@@ -217,33 +230,62 @@ class Server:
                         if robot_value[0] == "/":
                             if robot_value not in robot_domains:
                                 robot_domains.append(robot_value)
-                print("Unique Domains: {}".format(robot_domains))
-                print("Disallowed Domains: {}".format(robot_disallow))
+                self.soutput.do("Unique Domains: {}".format(robot_domains))
+                self.soutput.do("Disallowed Domains: {}".format(robot_disallow))
         except Exception as e:
-            print("Error getting robots.txt->", e)
+            self.soutput.do("Error getting robots.txt->", e)
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            print(exc_type, fname, exc_tb.tb_lineno)
+            self.soutput.do(exc_type, fname, exc_tb.tb_lineno)
 
-        print("Tested", try_count, "urls.")
+        self.soutput.do("Tested {} urls.".format(try_count))
         # determine directory structure for the website, and recurse through
         # directories applying wordlist each time.
         # func scan_html(string html) that returns a list of urls found from
         # a xpath
         if len(robot_domains) < 1:
-            print("No working domains found.")
+            self.soutput.do("No working domains found.")
         else:
-            print("Found some domains.")
+            self.soutput.do("Found some domains.")
             for domain in robot_domains:
-                print("{}\n".format(domain))
+                self.soutput.do("{}\n".format(domain))
         # check each of the found domains.
         return True
         # Alert user to robots.txt directories, and ask to insert unique values
         # into words.txt for usage on future projects.
+        # I think it's just going to be urged that the user enter in appropriate directories themselves.
+
+        # TODO: Need a function to parse URLs and return a whole http://www.url.com format string_
+        #   would be used by scan_html()
 
         # Change the wordlist dynamically too, so it replaces characters with
         # similar characters, such as p4ssw0rd or p455w0rd, etc.
-
+    def full_url(self, partial_url):
+        #partial_urls I expect: /directory/, /file.ext, url.com, www.url.com, http://www.url.com
+        if partial_url[0:4] == "http":
+            #already a full url as far as i'm concerned
+            return partial_url
+        elif partial_url[0:4] == "www.":
+            #we're real close.
+            fUrl = "https://" + partial_url
+            return fUrl
+        elif len(partial_url.split(".")) == 2:
+            #url.com, url.jp, url.wtfever
+            #ooh... or /file.ext...
+            if partial_url[0] == "/":
+                #local directory
+                fUrl = self.url_good + partial_url
+            else:
+                #external url
+                fUrl = "https://www." + partial_url
+            return fUrl
+        elif partial_url[0] == "/":
+            fUrl = self.url_good + partial_url[1:]
+            return fUrl
+        else:
+            #should be a local directory, I guess...
+            fUrl = self.url_good + partial_url
+            return partial_url
 
 class WordList:
     def __init__(self, location):
@@ -254,7 +296,7 @@ class WordList:
             self.lines = self.open_file
             self.word_count = len(self.lines)
         except Exception as exc:
-            print("Couldn't open file. ->", exc)
+            self.soutput.do("Couldn't open file. -> {}".format(exc))
 
     @property
     def open_file(self):
@@ -300,6 +342,6 @@ if __name__ == "__main__":
     my_server = Server(temp_website, my_wordlist)
     if my_server.scan_website(my_wordlist):
         try:
-            print("Finished scan of {} in {:.2f} seconds.".format(my_server.url_good, (time.time() - op_timer1)))
+            my_server.soutput.do("Finished scan of {} in {:.2f} seconds.".format(my_server.url_good, (time.time() - op_timer1)))
         except Exception as e:
-            print("Error starting scan of", my_server.url_good, ". e:", e)
+            my_server.soutput.do("Error starting scan of {}. e: {}".format(my_server.url_good, e))
