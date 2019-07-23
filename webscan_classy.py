@@ -91,12 +91,12 @@ class server():
 
     def scan_url(self, url):
     #url is a clean url
-        if debug == True:
+        if debug:
             print("\nScanning URL: {}".format(url))
         scan_req = requests.get(url, allow_redirects=False)
         scan_req_list_lines = scan_req.text.splitlines(True)
         scan_req_sc = scan_req.status_code
-        if debug == True:
+        if debug:
             print("SEARCHING URL: {}".format(url))
         if scan_req_sc == 200:
             print(self.scan_html(scan_req.text))
@@ -105,12 +105,8 @@ class server():
     def scan_html(self,html):
         #html is a string
         root = etree.XML(html)
-        #parser = etree.HTMLParser()
-        #tree = etree.parse(html, parser)
         if len(root) > 0:
             print(root.find('a'))
-        #return re.search('(?:(?:https?|ftp):\/\/|\b(?:[a-z\d]+\.))(?:(?:[^\s()<>]+|\((?:[^\s()<>]+|(?:\([^\s()<>]+\)))?\))+(?:\((?:[^\s()<>]+|(?:\(?:[^\s()<>]+\)))?\)|[^\s`!()\[\]{};:\'".,<>?«»“”‘’]))?',scan_req.text)
-        #return regex(html,"whatever")
 
     def scan_website(self, wordlist):
         try:
@@ -118,11 +114,11 @@ class server():
             directory_structure = [] #Storing found directories.
             #print("Word Count: ", len(list_of_words))
             #print(self.html)
-        except Exception as e:
-            print("Error getting wordlist information. ->", e)
+        except Exception as ex:
+            print("Error getting word list information. ->", ex)
             return
 
-        print("\nWorking domains printed below for",self.url_good)
+        print("\nWorking domains printed below for", self.url_good)
         print("-=-=-=-=-=-=-=-=-=-=")
         try_count = 0
         for word in list_of_words:
@@ -142,7 +138,7 @@ class server():
                     directory_structure.append(clean_directory)
                     print("Current Dir Structure -> {}".format(directory_structure))
                 else:
-                    if debug == True:
+                    if debug:
                         print("URL: {}  Status Code: {}".format(scan_url_dir,scan_sc))
                 for ext in self.file_extensions: #dynamic URLs
                     time.sleep(self.throttle_timer)
@@ -160,10 +156,10 @@ class server():
                     if scan_sc == 200:
                         print(ext_url,"->", scan_sc)
                     else:
-                        if debug == True:
+                        if debug:
                             print("URL: {}  Status Code: {}".format(ext_url,scan_sc))
             except Exception as e:
-                if debug == True:
+                if debug:
                     print("Error Scanning Website ->", e)
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
@@ -238,15 +234,15 @@ class server():
         #similar characters, such as p4ssw0rd or p455w0rd, etc.
 
 class word_list():
-    def __init__(self,location):
+    def __init__(self, location):
         self.location = location
         #TODO: ideally location would be a URL or a local file.
         #TODO: Check to see if the file exists. We're going to assume it does
         try:
             self.text = self.open_file()
             self.word_count = len(self.text)
-        except Exception as e:
-            print("Couldn't open file. ->",e)
+        except Exception as exc:
+            print("Couldn't open file. ->", exc)
 
     def open_file(self):
         opened_file = open(self.location, 'r+')
@@ -273,16 +269,18 @@ class scan_timer():
             len = self.stop_time - self.start_time
         return len
 
-print("Domain Scanner, written by Blake Bartlett.\nVersion: {}\n".format(ws_version))
-temp_website = input("What URL would you like to scan? ->")
-temp_wordlist = input("And where is your wordlist located at? Local File Directory: ")
+if __name__ == "__main__":
 
-op_timer1 = time.time() #Start timer for whole program to run.
+    print("Domain Scanner, written by Blake Bartlett.\nVersion: {}\n".format(ws_version))
+    temp_website = input('What URL would you like to scan? ->')
+    temp_wordlist = input("And where is your wordlist located at? Local File Directory: ")
 
-my_wordlist = word_list(temp_wordlist)
-my_server = server(temp_website, my_wordlist)
-if my_server.scan_website(my_wordlist) != False:
-    try:
-        print("Finished scan of {} in {:.2f} seconds.".format(my_server.url_good,(time.time() - op_timer1)))
-    except Exception as e:
-        print("Error starting scan of", my_server.url_good,". e:", e)
+    op_timer1 = time.time() #Start timer for whole program to run.
+
+    my_wordlist = word_list(temp_wordlist)
+    my_server = server(temp_website, my_wordlist)
+    if my_server.scan_website(my_wordlist):
+        try:
+            print("Finished scan of {} in {:.2f} seconds.".format(my_server.url_good,(time.time() - op_timer1)))
+        except Exception as e:
+            print("Error starting scan of", my_server.url_good,". e:", e)
