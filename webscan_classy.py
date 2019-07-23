@@ -24,11 +24,11 @@ import time
 from datetime import datetime  # Used for getting time for unique file names.
 
 import requests  # Initially for url status codes. Going to pull robots.txt too.
-from lxml import etree
 from lxml import html as lhtml
 
-ws_version = "0.0.1"
+ws_version = "0.0.2"
 debug = False
+
 
 class Output:
     def __init__(self, output_string):
@@ -71,13 +71,13 @@ class Server:
                 start_throttle_timer.stop()
                 if start_throttle_timer.length > 0:
                     self.throttle_timer = self.throttle_multiplier * start_throttle_timer.length
-                # self.status_code = request.status_code
-                # self.html = request.text
-                # print("::HEADERS:: ", request.headers)
             else:
                 raise ValueError("Wordlist is empty")
-        except Exception as e:
-            print("Couldn't get website information. Error Info:" + e)
+        except Exception as exx:
+            print("Couldn't get website information. Error Info:" + exx)
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+            print(exc_type, fname, exc_tb.tb_lineno)
 
     def good_url(self, url):
         good_url: str = ""
@@ -110,29 +110,27 @@ class Server:
         if debug:
             print("SEARCHING URL: {}".format(url))
         if scan_req_sc == 200:
-            print(self.scan_html(scan_req.text))
-            scan_req_list_lines = scan_req.text.splitlines(True)
+            if len(scan_req.text) > 0:
+                print(self.scan_html(scan_req.text))
+                scan_req_list_lines = scan_req.text.splitlines(True)
+            else:
+                error_text = url + " was blank."
+                raise ValueError(error_text)
         else:
             scan_req_list_lines = []
         return scan_req_sc, scan_req_list_lines
 
     def scan_html(self, html):
         # html is a string
-        root = lhtml.fromstring(html)
-        anchor_tags = root.xpath("//a/@href")
-        print("{} anchor tags at {}:".format(len(anchor_tags), self.url_good))
-        #print(root.xpath("//a/@href"))
+        if len(html) > 0:
+            root = lhtml.fromstring(html)
+            anchor_tags = root.xpath("//a/@href")
+            print("{} anchor tags at {}:".format(len(anchor_tags), self.url_good))
+            print(anchor_tags)
 
     def scan_website(self, wordlist):
-        try:
-            #list_of_words = wordlist.text.splitlines(True)
 
-            directory_structure = []  # Storing found directories.
-            # print("Word Count: ", len(list_of_words))
-            # print(self.html)
-        except Exception as ex:
-            print("Error getting word list information. ->", ex)
-            return
+        directory_structure = []  # Storing found directories.
 
         print("\nWorking domains printed below for", self.url_good)
         print("-=-=-=-=-=-=-=-=-=-=")
@@ -144,8 +142,6 @@ class Server:
                 time.sleep(self.throttle_timer)
                 clean_directory = word.strip().strip("/")
                 scan_url_dir = self.url_good + clean_directory
-                # scan_req_dir = requests.get(scan_url_dir, allow_redirects=False)
-                # scan_sc = scan_req_dir.status_code
                 scan_sc, scan_req_text_lines = self.scan_url(scan_url_dir)
                 try_count += 1
                 print("URLs Tested: {}".format(try_count), end="\r")
@@ -195,7 +191,6 @@ class Server:
                 print("robots.txt error. Status Code: {}".format(robots_sc))
             else:
                 print("robots.txt found.\nProcessing...")
-                # print("robots.txt contents: {}".format(robots_list))  #prints out the contents of the robots.txt file
                 for line in robots_list:
                     try:
                         list_words = line.split(" ")
@@ -216,7 +211,6 @@ class Server:
                         sitemap_location = robot_value
                         print("Found a sitemap: {}".format(sitemap_location))
                     elif robot_property == "Disallow":
-                        # print("Skipping Directory Addition -> {}".format(robot_value))
                         robot_disallow.append(robot_value)
                         continue
                     elif len(robot_value) > 1:
@@ -235,10 +229,9 @@ class Server:
         # determine directory structure for the website, and recurse through
         # directories applying wordlist each time.
         # func scan_html(string html) that returns a list of urls found from
-        # a regex
+        # a xpath
         if len(robot_domains) < 1:
             print("No working domains found.")
-            # move on
         else:
             print("Found some domains.")
             for domain in robot_domains:
@@ -266,14 +259,13 @@ class WordList:
     @property
     def open_file(self):
         opened_file = open(self.location, 'r+')
-        #opened_file_text = opened_file.read()
         opened_file_list = opened_file.readlines()
         opened_file.close()
-        #print(opened_file_list)
         return opened_file_list
 
     def get_list(self):
         return self.lines
+
 
 class ScanTimer:
     def __init__(self):
@@ -294,6 +286,7 @@ class ScanTimer:
         else:
             leng = self.stop_time - self.start_time
         return leng
+
 
 if __name__ == "__main__":
 
