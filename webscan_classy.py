@@ -45,7 +45,7 @@ class Output:
 
     def file_write(self, output_string):
         try:
-            self.log_file.writelines(str(output_string))
+            self.log_file.write(str(output_string) + "\n")
         except Exception as fwExc:
             print("Log file write error: {}".format(fwExc))
 
@@ -59,9 +59,15 @@ class Output:
     def file_close(self):
         self.log_file.close()
 
-    def do(self, output_string):
-        print(output_string)
-        self.file_write(output_string)
+    def do(self, output_string, *args):
+        if len(args) > 0:
+            if args[0] == True:
+                if debug:
+                    print(output_string)
+                    self.file_write(output_string)
+        else:
+            print(output_string)
+            self.file_write(output_string)
 
 
 class Server:
@@ -71,6 +77,7 @@ class Server:
         self.throttle_multiplier = 4  # Time to get a file multiplied by this
         self.busy_animation = ['/', '-', '\\', '|']
         self.wordlist_len = len(wordlist)
+        self.url_list = []
 
         self.soutput = Output(self.url)
 
@@ -137,10 +144,17 @@ class Server:
         if len(html) > 0:
             root = lhtml.fromstring(html)
             anchor_tags = root.xpath("//a/@href")
-            self.soutput.do("{} anchor tags at {}:".format(len(anchor_tags), self.url_good))
-            self.soutput.do(anchor_tags)
-            for link in anchor_tags:
-                self.soutput.do(self.full_url(link))
+            anchor_count = len(anchor_tags)
+            self.soutput.do("{} anchor tags at {}".format(anchor_count, self.url_good))
+            if anchor_count > 0:
+                #self.soutput.do(anchor_tags)
+                for link in anchor_tags:
+                    self.soutput.do("Link: {}".format(link), True)
+                    if link in self.url_list:
+                        continue
+                    else:
+                        self.url_list.append(link)
+                        #self.soutput.do(self.full_url(link))
 
     def scan_website(self, wordlist):
         directory_structure = []  # Storing found directories.
@@ -223,6 +237,7 @@ class Server:
                         # note the differences.
                         sitemap_location = robot_value
                         self.soutput.do("Found a sitemap: {}".format(sitemap_location))
+                        self.scan_url(sitemap_location)
                     elif robot_property == "Disallow":
                         robot_disallow.append(robot_value)
                         continue
@@ -262,30 +277,31 @@ class Server:
         # similar characters, such as p4ssw0rd or p455w0rd, etc.
     def full_url(self, partial_url):
         #partial_urls I expect: /directory/, /file.ext, url.com, www.url.com, http://www.url.com
-        if partial_url[0:4] == "http":
-            #already a full url as far as i'm concerned
-            return partial_url
-        elif partial_url[0:4] == "www.":
-            #we're real close.
-            fUrl = "https://" + partial_url
-            return fUrl
-        elif len(partial_url.split(".")) == 2:
-            #url.com, url.jp, url.wtfever
-            #ooh... or /file.ext...
-            if partial_url[0] == "/":
-                #local directory
-                fUrl = self.url_good + partial_url
+        if len(partial_url) > 0:
+            if partial_url[0:4] == "http":
+                #already a full url as far as i'm concerned
+                return partial_url
+            elif partial_url[0:4] == "www.":
+                #we're real close.
+                fUrl = "https://" + partial_url
+                return fUrl
+            elif len(partial_url.split(".")) == 2:
+                #url.com, url.jp, url.wtfever
+                #ooh... or /file.ext...
+                if partial_url[0] == "/":
+                    #local directory
+                    fUrl = self.url_good + partial_url
+                else:
+                    #external url
+                    fUrl = "https://www." + partial_url
+                return fUrl
+            elif partial_url[0] == "/":
+                fUrl = self.url_good + partial_url[1:]
+                return fUrl
             else:
-                #external url
-                fUrl = "https://www." + partial_url
-            return fUrl
-        elif partial_url[0] == "/":
-            fUrl = self.url_good + partial_url[1:]
-            return fUrl
-        else:
-            #should be a local directory, I guess...
-            fUrl = self.url_good + partial_url
-            return partial_url
+                #should be a local directory, I guess...
+                fUrl = self.url_good + partial_url
+                return partial_url
 
 class WordList:
     def __init__(self, location):
