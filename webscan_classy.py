@@ -17,6 +17,7 @@ Change Log:
     7/18/2019 - Added version number. Starting today @ 0.0.1
                 Created a scan_url() function to kill some repetetive text
     7/22/2019 - Started using PyCharm. Fixed a bunch of coding errors. Worked on scan_html().
+    7/24/2019 - Added get_domain(url) function. it pulls url.com from http://www.url.com/test/foo.bar?boo=far&baf=oor
 """
 
 import os
@@ -87,7 +88,7 @@ class Server:
                 self.url_good = self.good_url(self.url)  # Get a good URL
                 start_throttle_timer = ScanTimer()  # Starting throttle timer
                 start_throttle_timer.start()
-                start_page = requests.get(self.url_good, allow_redirects=False)  # Get good URL obj
+                start_page = requests.get(self.url_good, allow_redirects=False, timeout=5)  # Get good URL obj
                 self.scan_html(start_page.text)
                 start_throttle_timer.stop()
                 if start_throttle_timer.length > 0:
@@ -95,10 +96,10 @@ class Server:
             else:
                 raise ValueError("Wordlist is empty")
         except Exception as exx:
-            self.soutput.do("Couldn't get website information. Error Info:" + exx)
+            self.soutput.do("Couldn't get website information. Error Info:\n{}".format(str(exx)))
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            self.soutput.do(exc_type, fname, exc_tb.tb_lineno)
+            self.soutput.do("{}\n[] - Line {}".format(exc_type, fname, exc_tb.tb_lineno))
 
     def good_url(self, url):
         good_url: str = ""
@@ -109,10 +110,6 @@ class Server:
             else:
                 good_url = "https://" + url
             # This is a good start.
-            if url_first_four != "www.":
-                good_url = "https://www." + url
-            else:
-                good_url = "https://" + url
         else:
             good_url = url
             # Just return the url
@@ -126,11 +123,11 @@ class Server:
         # url is a clean url
         if debug:
             self.soutput.do("\nScanning URL: {}".format(url), True)
-        scan_req = requests.get(url, allow_redirects=False)
+        scan_req = requests.get(url, allow_redirects=False, timeout=5)
         scan_req_sc = scan_req.status_code
         if scan_req_sc == 200:
             if len(scan_req.text) > 0:
-                self.soutput.do(self.scan_html(scan_req.text))
+                self.soutput.do("ASDF {}".format(self.scan_html(scan_req.text)))
                 scan_req_list_lines = scan_req.text.splitlines(True)
             else:
                 error_text = url + " was blank."
@@ -144,17 +141,29 @@ class Server:
         if len(html) > 0:
             root = lhtml.fromstring(html)
             anchor_tags = root.xpath("//a/@href")
+            anchor_tags += root.xpath("//iframe/@src")
+            anchor_tags += root.xpath("//script/@src")
+            anchor_tags += root.xpath("//link/@href")
+            anchor_tags += root.xpath("//image/@src")
             anchor_count = len(anchor_tags)
-            self.soutput.do("{} anchor tags at {}".format(anchor_count, self.url_good))
+            #self.soutput.do("{} anchor tags at {}".format(anchor_count, self.url_good))
+            #should be moved to wherever is calling this function
             if anchor_count > 0:
                 #self.soutput.do(anchor_tags)
                 for link in anchor_tags:
-                    self.soutput.do("Link: {}".format(link), True)
-                    if link in self.url_list:
+                    link_full = self.full_url(link)
+                    if link_full in self.url_list:
+                        #We've already scanned this URL.
                         continue
                     else:
-                        self.url_list.append(link)
-                        #self.soutput.do(self.full_url(link))
+                        self.url_list.append(link_full)
+                        self.soutput.do("Link: {}".format(link_full), True)
+                        #Scan the URL, but only if it's on the same domain we started with.
+                        if self.get_domain(link_full) == self.get_domain(self.url_good):
+                            #self.scan_website()
+                            self.scan_url(link_full)
+                            #self.soutput.do(self.full_url(link))
+
 
     def scan_website(self, wordlist):
         directory_structure = []  # Storing found directories.
@@ -165,21 +174,23 @@ class Server:
         for word in wordlist:
             try:
                 # print("Working... {}".format(self.busy_animation[try_count % 4]), end="\r")
-                print("URLs tested: {}".format(try_count), end="\r")
+                print("URLs tested: {}\r".format(try_count), end="")
                 time.sleep(self.throttle_timer)
+                #ytmnd.com didn't create a throttle_timer variable, but the program made it here anyhow.
                 clean_directory = word.strip().strip("/")
                 scan_url_dir = self.url_good + clean_directory
                 scan_sc, scan_req_text_lines = self.scan_url(scan_url_dir)
                 try_count += 1
-                print("URLs Tested: {}".format(try_count), end="\r")
+                print("URLs tested: {}\r".format(try_count), end="")
                 if scan_sc == 200:
                     self.soutput.do(scan_url_dir, "->", scan_sc)
                     # Here's an available directory.
                     directory_structure.append(clean_directory)
-                    self.soutput.do("Current Dir Structure -> {}".format(directory_structure))
-                else:
+                    self.soutput.do("Found a directory.\n{}".format(directory_structure))
+                elif scan_sc < 300 or scan_sc > 499:
                     if debug:
                         self.soutput.do("URL: {}  Status Code: {}".format(scan_url_dir, scan_sc), True)
+                #an else here would target 300s and 400s status codes
                 for ext in self.file_extensions:  # dynamic URLs
                     time.sleep(self.throttle_timer)
                     ext_url = self.url_good + word.strip() + "." + ext
@@ -190,19 +201,23 @@ class Server:
                     if scan_timer2.length > 0:
                         self.throttle_timer = self.throttle_multiplier * scan_timer2.length  # Throttling 2.0
                         # print("Working... {}".format(self.busy_animation[try_count % 4]), end="\r")
-                        print("URLs tested: {}".format(try_count), end="\r")
+                        print("URLs tested: {}\r".format(try_count), end="")
                     try_count += 1  # counting unique urls that are getting scanned
                     if scan_sc == 200:
                         self.soutput.do(ext_url, "->", scan_sc)
-                    else:
+                    elif scan_sc < 300 or scan_sc > 499:
                         if debug:
-                            self.soutput.do("URL: {}  Status Code: {}".format(ext_url, scan_sc),True)
+                            self.soutput.do("URL: {}  Status Code: {}".format(scan_url_dir, scan_sc), True)
+            except AttributeError:
+                #Likely a dead website.
+                pass
             except Exception as exce:
                 if debug:
                     self.soutput.do("Error Scanning Website: {}".format(exce))
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-                self.soutput.do(exc_type, fname, exc_tb.tb_lineno)
+                self.soutput.do(str(exc_type))
+                self.soutput.do("{} - Line #: {}".format(str(fname), str(exc_tb.tb_lineno)))
 
         # After that works
         # get all the info from robots.txt and scan those directories
@@ -217,7 +232,7 @@ class Server:
             if robots_sc != 200:
                 self.soutput.do("robots.txt error. Status Code: {}".format(robots_sc))
             else:
-                self.soutput.do("robots.txt found.\nProcessing...")
+                self.soutput.do("{}robots.txt found.\nProcessing...".format(self.url_good))
                 for line in robots_list:
                     try:
                         list_words = line.split(" ")
@@ -239,12 +254,15 @@ class Server:
                         self.soutput.do("Found a sitemap: {}".format(sitemap_location))
                         self.scan_url(sitemap_location)
                     elif robot_property == "Disallow":
-                        robot_disallow.append(robot_value)
+                        robot_disallow.append(robot_value.strip("/"))
+                        continue
+                    elif robot_property == "#":
                         continue
                     elif len(robot_value) > 1:
-                        if robot_value[0] == "/":
-                            if robot_value not in robot_domains:
-                                robot_domains.append(robot_value)
+                        stripped_domain = robot_value.strip("/")
+                        if stripped_domain[0] == "/":
+                            if stripped_domain not in robot_domains:
+                                robot_domains.append(stripped_domain)
                 self.soutput.do("Unique Domains: {}".format(robot_domains))
                 self.soutput.do("Disallowed Domains: {}".format(robot_disallow))
         except Exception as e:
@@ -265,6 +283,9 @@ class Server:
             for domain in robot_domains:
                 self.soutput.do("{}\n".format(domain))
         # check each of the found domains.
+        if len(self.url_list) > 0:
+            self.soutput.do("Found some other URLs:\n{}".format(self.url_list))
+
         return True
         # Alert user to robots.txt directories, and ask to insert unique values
         # into words.txt for usage on future projects.
@@ -279,7 +300,8 @@ class Server:
         #partial_urls I expect: /directory/, /file.ext, url.com, www.url.com, http://www.url.com
         if len(partial_url) > 0:
             if partial_url[0:4] == "http":
-                #already a full url as far as i'm concerned
+                #already a full url as far as i'm concerned...
+                #well actually, this let's http://url.com through
                 return partial_url
             elif partial_url[0:4] == "www.":
                 #we're real close.
@@ -296,12 +318,34 @@ class Server:
                     fUrl = "https://www." + partial_url
                 return fUrl
             elif partial_url[0] == "/":
-                fUrl = self.url_good + partial_url[1:]
+                fUrl = self.url_good + partial_url.strip("/")
                 return fUrl
             else:
                 #should be a local directory, I guess...
-                fUrl = self.url_good + partial_url
-                return partial_url
+                fUrl = self.url_good + partial_url.strip("/")
+                return fUrl
+
+    def get_domain(self, url):
+        #ideally this only gets passed full URLs, but I guess we should sanitize anyhow
+        domain_full_url = self.full_url(url)
+        #https://www.url.com/whtf/ever.php?s=24&tfu=yes!
+        domain_space_list = domain_full_url.split(".")
+        if len(domain_space_list) > 2:
+            part1 = domain_space_list[1]
+            pt2_split_list = domain_space_list[2].split("/")
+            part2 = pt2_split_list[0]
+            ret_url = part1 + part2
+        elif len(domain_space_list) == 2:
+            #http://domain.com, or something else that will break the code
+            part2 = domain_space_list[1].strip("/")
+            part1_colon_list = domain_space_list[0].split(":")
+            part1 = part1_colon_list[1].strip("/")
+            ret_url = part1 + part2
+        else:
+            #something else...
+            ret_url = url
+        return ret_url
+
 
 class WordList:
     def __init__(self, location):
